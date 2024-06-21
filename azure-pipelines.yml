@@ -1,0 +1,78 @@
+trigger:
+  - main
+
+# PRs are not currently built (https://docs.microsoft.com/en-us/azure/devops/pipelines/build/triggers?view=azure-devops&tabs=yaml)
+pr: none
+
+pool: Default
+
+steps:
+  - script: 'call "$(Build.SourcesDirectory)\Support\CI\build.bat" "$(Build.SourcesDirectory)"'
+    displayName: 'Build PhotoDemon.vbp'
+    workingDirectory:  '$(Build.SourcesDirectory)\Support\CI'
+    failOnStderr: true
+  
+  - task: CopyFiles@2
+    displayName: 'Copy PhotoDemon.exe to $(Build.BinariesDirectory)'
+    inputs:
+      sourceFolder: '$(Build.SourcesDirectory)'
+      contents: |
+        Donate to PhotoDemon.url
+        AUTHORS.md
+        INSTALL.md
+        LICENSE.md
+        README.md
+        PhotoDemon.exe
+      targetFolder: '$(Build.BinariesDirectory)'
+      cleanTargetFolder: true
+      
+  - task: CopyFiles@2
+    displayName: 'Copy App folder to $(Build.BinariesDirectory)\App'
+    inputs:
+      sourceFolder: '$(Build.SourcesDirectory)\App'
+      contents: '**'
+      targetFolder: '$(Build.BinariesDirectory)\App'
+  
+  - task: ArchiveFiles@2
+    displayName: 'Archive $(Build.BinariesDirectory)'
+    inputs:
+      rootFolderOrFile: '$(Build.BinariesDirectory)'
+      archiveFile: '$(Build.ArtifactStagingDirectory)/PhotoDemon-nightly.zip' 
+      includeRootFolder: false
+      replaceExistingArchive: true
+  
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish artifact PhotoDemon'
+    inputs:
+      pathToPublish: '$(Build.BinariesDirectory)'
+      artifactName: 'PhotoDemon'
+      parallel: true
+
+  - task: GithubRelease@1
+    displayName: 'Remove release `PhotoDemon-nightly` on github.com'
+    condition: and(succeeded(), not(startsWith(variables['Build.SourceBranch'], 'refs/pull')))
+    continueOnError: true
+    inputs:
+      githubConnection: 'GitHub'
+      repositoryName: 'tannerhelland/PhotoDemon'
+      action: 'delete'
+      tag: 'PhotoDemon-nightly'
+  
+  - task: GithubRelease@1
+    displayName: 'Create release `PhotoDemon-nightly` on github.com'
+    condition: and(succeeded(), not(startsWith(variables['Build.SourceBranch'], 'refs/pull')))
+    inputs:
+      gitHubConnection: 'GitHub'
+      repositoryName: 'tannerhelland/PhotoDemon'
+      action: 'create'
+      tagSource: 'userSpecifiedTag'
+      tag: 'PhotoDemon-nightly'
+      title: 'PhotoDemon nightly build'
+      assets: $(Build.ArtifactStagingDirectory)/*
+      assetUploadMode: 'delete'
+      isPreRelease: true
+      releaseNotesSource: 'inline'
+      releaseNotesInline: 'This release was automatically built from PhotoDemon''s current source code.  It may contain serious bugs.  Use at your own risk.'
+      addChangeLog: true
+      changeLogType: 'commitBased'
+      changeLogCompareToRelease: 'lastFullRelease'
